@@ -17,6 +17,9 @@ interface VirtualWorkspaceDao {
     @Query("SELECT * FROM virtual_apps WHERE packageName = :packageName LIMIT 1")
     suspend fun getApp(packageName: String): VirtualAppEntity?
 
+    @Query("SELECT COUNT(*) FROM virtual_apps")
+    suspend fun getPinnedCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertApp(app: VirtualAppEntity)
 

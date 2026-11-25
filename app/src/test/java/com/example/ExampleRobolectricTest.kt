@@ -87,14 +87,24 @@ class ExampleRobolectricTest {
 
     @Test
     fun `switching between Android TV 12 and 11 persists in config`() = runTest {
-        repository.ensureDefaultConfig()
+        val seedApp = InstalledBoxApp(
+            packageName = "org.videolan.vlc",
+            label = "VLC",
+            versionName = "3.5",
+            isTvOptimized = true,
+            isSystemApp = false,
+            category = AppCategory.STREAMING
+        )
+        repository.ensureDefaultConfigAndSeed(listOf(seedApp))
         val initial = repository.workspaceConfigFlow.first()
         assertEquals(VirtualOsVersion.TV_12.code, initial.virtualOsVersion)
+        assertEquals(1, repository.pinnedAppsFlow.first().size)
 
         repository.saveConfig(
             WorkspaceConfigEntity(
                 virtualOsVersion = VirtualOsVersion.TV_11.code,
-                workspaceName = "Salon Box"
+                workspaceName = "Salon Box",
+                hasAutoSeededApps = true
             )
         )
         val updated = repository.workspaceConfigFlow.first()

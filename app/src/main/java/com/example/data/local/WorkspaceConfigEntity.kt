@@ -7,8 +7,9 @@ import androidx.room.PrimaryKey
 data class WorkspaceConfigEntity(
     @PrimaryKey val id: Int = 1,
     val virtualOsVersion: String = "TV_12",
-    val workspaceName: String = "غرفة المعيشة • TV Box",
+    val workspaceName: String = "Android TV 12",
     val showSystemApps: Boolean = false,
     val compactGrid: Boolean = false,
-    val ambientDimLevel: Float = 0.45f
+    val ambientDimLevel: Float = 0.48f,
+    val hasAutoSeededApps: Boolean = false
 )

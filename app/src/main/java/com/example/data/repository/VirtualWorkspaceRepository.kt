@@ -24,9 +24,25 @@ class VirtualWorkspaceRepository(
         config ?: WorkspaceConfigEntity()
     }
 
-    suspend fun ensureDefaultConfig() {
-        if (dao.getConfigOnce() == null) {
-            dao.upsertConfig(WorkspaceConfigEntity())
+    suspend fun ensureDefaultConfigAndSeed(scannedApps: List<InstalledBoxApp>) {
+        val current = dao.getConfigOnce()
+        val config = current ?: WorkspaceConfigEntity().also { dao.upsertConfig(it) }
+
+        if (!config.hasAutoSeededApps) {
+            if (dao.getPinnedCount() == 0 && scannedApps.isNotEmpty()) {
+                scannedApps.take(10).forEachIndexed { index, app ->
+                    dao.upsertApp(
+                        VirtualAppEntity(
+                            packageName = app.packageName,
+                            customLabel = app.label,
+                            category = app.category.key,
+                            isPinnedToHome = true,
+                            sortOrder = index
+                        )
+                    )
+                }
+            }
+            dao.upsertConfig(config.copy(hasAutoSeededApps = true))
         }
     }
 
@@ -88,6 +104,10 @@ class VirtualWorkspaceRepository(
 
     fun searchPlayStore(query: String): ExternalLaunchResult =
         packageManager.searchPlayStore(query)
+
+    fun openSystemSettings(action: String): Boolean = packageManager.openSystemSettings(action)
+
+    fun openAppDetails(packageName: String): Boolean = packageManager.openAppDetails(packageName)
 
     fun loadAppIcon(packageName: String): Drawable? = packageManager.loadAppIcon(packageName)
 

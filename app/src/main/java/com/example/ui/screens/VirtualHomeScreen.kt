@@ -1,13 +1,13 @@
 package com.example.ui.screens
 
 import android.graphics.drawable.Drawable
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,260 +21,332 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddToQueue
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.AppCategory
 import com.example.data.model.InstalledBoxApp
+import com.example.data.model.PlayStoreRecommendation
 import com.example.ui.components.AppIconBadge
-import com.example.ui.components.CategoryPickerDialog
-import com.example.ui.components.TvFocusableSurface
 import com.example.ui.components.categoryStringRes
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.SpaceGroteskFontFamily
+import com.example.ui.theme.TvSuccess
 import com.example.ui.theme.VirtualOsVersion
 import com.example.viewmodel.VirtualTvUiState
+import kotlinx.coroutines.delay
+
+private data class SpotlightItem(
+    val title: String,
+    val subtitle: String,
+    val packageName: String,
+    val isInstalled: Boolean,
+    val badgeText: String
+)
 
 @Composable
 fun VirtualHomeScreen(
     uiState: VirtualTvUiState,
     loadIcon: (String) -> Drawable?,
-    onSelectCategory: (AppCategory?) -> Unit,
     onLaunchApp: (InstalledBoxApp) -> Unit,
+    onLaunchPackage: (String, String) -> Unit,
     onUnpinApp: (InstalledBoxApp) -> Unit,
     onChangeAppCategory: (String, AppCategory) -> Unit,
+    onOpenAppSystemInfo: (String) -> Unit,
+    onOpenPlayStoreApp: (String) -> Unit,
     onNavigateToBoxApps: () -> Unit,
     onNavigateToPlayStore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var appPendingCategory by remember { mutableStateOf<InstalledBoxApp?>(null) }
+    var selectedAppForOptions by remember { mutableStateOf<InstalledBoxApp?>(null) }
 
-    val filteredPinned = remember(uiState.pinnedApps, uiState.selectedHomeCategory) {
-        val cat = uiState.selectedHomeCategory
-        if (cat == null) uiState.pinnedApps else uiState.pinnedApps.filter { it.category == cat }
+    val streamingApps = remember(uiState.pinnedApps, uiState.allBoxApps) {
+        (uiState.pinnedApps + uiState.allBoxApps)
+            .distinctBy { it.packageName }
+            .filter { it.category == AppCategory.STREAMING }
+    }
+    val gamingAndUtilityApps = remember(uiState.pinnedApps, uiState.allBoxApps) {
+        (uiState.pinnedApps + uiState.allBoxApps)
+            .distinctBy { it.packageName }
+            .filter { it.category == AppCategory.GAMING || it.category == AppCategory.UTILITIES }
     }
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val columns = when {
-            maxWidth >= 900.dp -> if (uiState.config.compactGrid) 4 else 3
-            maxWidth >= 600.dp -> if (uiState.config.compactGrid) 3 else 2
-            else -> if (uiState.config.compactGrid) 2 else 1
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            item(key = "hero_spotlight") {
-                VirtualHeroCard(
-                    virtualOsVersion = uiState.virtualOsVersion,
-                    hostAndroidVersion = uiState.telemetry?.hostAndroidVersion ?: "9",
-                    onNavigateToBoxApps = onNavigateToBoxApps,
-                    onNavigateToPlayStore = onNavigateToPlayStore
+    val spotlightItems = remember(uiState.playStoreDirectory, uiState.pinnedApps) {
+        val installedTitles = uiState.pinnedApps
+            .filter { it.category == AppCategory.STREAMING || it.isTvOptimized }
+            .take(3)
+            .map {
+                SpotlightItem(
+                    title = it.label,
+                    subtitle = "${it.packageName} • جاهز للتشغيل المباشر",
+                    packageName = it.packageName,
+                    isInstalled = true,
+                    badgeText = "مثبت على البوكس"
                 )
             }
+        val playPicks = uiState.playStoreDirectory.take(4).map {
+            SpotlightItem(
+                title = it.title,
+                subtitle = it.tagline,
+                packageName = it.packageName,
+                isInstalled = it.isInstalledOnBox,
+                badgeText = if (it.isInstalledOnBox) "مثبت على البوكس" else it.developer
+            )
+        }
+        (installedTitles + playPicks).distinctBy { it.packageName }
+    }
 
-            if (uiState.recentApps.isNotEmpty()) {
-                item(key = "recent_rail") {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = stringResource(R.string.section_recent_launched),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(uiState.recentApps, key = { "recent_${it.packageName}" }) { app ->
-                                TvFocusableSurface(
-                                    onClick = { onLaunchApp(app) },
-                                    modifier = Modifier
-                                        .width(164.dp)
-                                        .testTag("recent_app_${app.packageName}")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        AppIconBadge(
-                                            packageName = app.packageName,
-                                            contentDescription = app.label,
-                                            loadIcon = loadIcon,
-                                            size = 42.dp
-                                        )
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = app.label,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = stringResource(R.string.action_launch_app),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            item(key = "category_bar") {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.section_pinned_apps),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = stringResource(
-                                R.string.section_pinned_count,
-                                uiState.pinnedApps.size
-                            ),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        FilterChip(
-                            selected = uiState.selectedHomeCategory == null,
-                            onClick = { onSelectCategory(null) },
-                            label = { Text(stringResource(R.string.cat_all)) },
-                            modifier = Modifier.testTag("home_cat_all"),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        )
-                        AppCategory.entries.forEach { cat ->
-                            FilterChip(
-                                selected = uiState.selectedHomeCategory == cat,
-                                onClick = { onSelectCategory(cat) },
-                                label = { Text(stringResource(categoryStringRes(cat))) },
-                                modifier = Modifier.testTag("home_cat_${cat.key.lowercase()}"),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (filteredPinned.isEmpty()) {
-                item(key = "empty_pinned") {
-                    EmptyPinnedWorkspaceCard(
-                        onNavigateToBoxApps = onNavigateToBoxApps,
-                        onNavigateToPlayStore = onNavigateToPlayStore
-                    )
-                }
-            } else {
-                val rows = filteredPinned.chunked(columns)
-                items(rows, key = { row -> row.joinToString("_") { it.packageName } }) { rowApps ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        rowApps.forEach { app ->
-                            PinnedAppTile(
-                                app = app,
-                                loadIcon = loadIcon,
-                                onLaunch = { onLaunchApp(app) },
-                                onEditCategory = { appPendingCategory = app },
-                                onUnpin = { onUnpinApp(app) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        repeat(columns - rowApps.size) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-
-            item(key = "bottom_spacer") {
-                Spacer(modifier = Modifier.height(24.dp))
+    var spotlightIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(spotlightItems.size) {
+        if (spotlightItems.size > 1) {
+            while (true) {
+                delay(7_000L)
+                spotlightIndex = (spotlightIndex + 1) % spotlightItems.size
             }
         }
     }
 
-    val pending = appPendingCategory
-    if (pending != null) {
-        CategoryPickerDialog(
-            appName = pending.label,
-            currentCategory = pending.category,
-            onSelectCategory = { cat ->
-                onChangeAppCategory(pending.packageName, cat)
-                appPendingCategory = null
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp)
+    ) {
+        if (uiState.virtualOsVersion == VirtualOsVersion.TV_12 && spotlightItems.isNotEmpty()) {
+            item(key = "tv12_spotlight") {
+                val activeItem = spotlightItems[spotlightIndex % spotlightItems.size]
+                GoogleTvSpotlightBanner(
+                    item = activeItem,
+                    totalCount = spotlightItems.size,
+                    activeIndex = spotlightIndex % spotlightItems.size,
+                    loadIcon = loadIcon,
+                    onSelectIndex = { spotlightIndex = it },
+                    onPrimaryAction = {
+                        if (activeItem.isInstalled) {
+                            onLaunchPackage(activeItem.packageName, activeItem.title)
+                        } else {
+                            onOpenPlayStoreApp(activeItem.packageName)
+                        }
+                    },
+                    onBrowseStore = onNavigateToPlayStore,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
+            }
+        }
+
+        // Your Apps Row (Authentic 16:9 Android TV Banner Tiles)
+        item(key = "your_apps_row") {
+            TvChannelRow(
+                title = stringResource(R.string.tv_row_your_apps),
+                showSidebarTag = uiState.virtualOsVersion == VirtualOsVersion.TV_11,
+                sidebarLabel = stringResource(R.string.tv_11_sidebar_apps)
+            ) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(uiState.pinnedApps, key = { "home_tile_${it.packageName}" }) { app ->
+                        TvAppBannerTile(
+                            app = app,
+                            loadIcon = loadIcon,
+                            compact = uiState.config.compactGrid,
+                            onClick = { onLaunchApp(app) },
+                            onLongClick = { selectedAppForOptions = app }
+                        )
+                    }
+                    item(key = "add_app_tile") {
+                        TvAddAppTile(
+                            compact = uiState.config.compactGrid,
+                            onClick = onNavigateToBoxApps
+                        )
+                    }
+                }
+            }
+        }
+
+        if (uiState.recentApps.isNotEmpty()) {
+            item(key = "recent_row") {
+                TvChannelRow(
+                    title = stringResource(R.string.tv_row_recent),
+                    showSidebarTag = uiState.virtualOsVersion == VirtualOsVersion.TV_11,
+                    sidebarLabel = stringResource(R.string.tv_11_sidebar_channels)
+                ) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        items(uiState.recentApps, key = { "recent_tile_${it.packageName}" }) { app ->
+                            TvAppBannerTile(
+                                app = app,
+                                loadIcon = loadIcon,
+                                compact = uiState.config.compactGrid,
+                                onClick = { onLaunchApp(app) },
+                                onLongClick = { selectedAppForOptions = app }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (streamingApps.isNotEmpty()) {
+            item(key = "streaming_row") {
+                TvChannelRow(
+                    title = stringResource(R.string.tv_row_streaming),
+                    showSidebarTag = uiState.virtualOsVersion == VirtualOsVersion.TV_11,
+                    sidebarLabel = stringResource(R.string.cat_streaming)
+                ) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        items(streamingApps, key = { "stream_tile_${it.packageName}" }) { app ->
+                            TvAppBannerTile(
+                                app = app,
+                                loadIcon = loadIcon,
+                                compact = uiState.config.compactGrid,
+                                onClick = { onLaunchApp(app) },
+                                onLongClick = { selectedAppForOptions = app }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (gamingAndUtilityApps.isNotEmpty()) {
+            item(key = "games_tools_row") {
+                TvChannelRow(
+                    title = stringResource(R.string.tv_row_games_tools),
+                    showSidebarTag = uiState.virtualOsVersion == VirtualOsVersion.TV_11,
+                    sidebarLabel = stringResource(R.string.cat_utilities)
+                ) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        items(gamingAndUtilityApps, key = { "util_tile_${it.packageName}" }) { app ->
+                            TvAppBannerTile(
+                                app = app,
+                                loadIcon = loadIcon,
+                                compact = uiState.config.compactGrid,
+                                onClick = { onLaunchApp(app) },
+                                onLongClick = { selectedAppForOptions = app }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item(key = "play_picks_row") {
+            TvChannelRow(
+                title = stringResource(R.string.tv_row_play_picks),
+                showSidebarTag = uiState.virtualOsVersion == VirtualOsVersion.TV_11,
+                sidebarLabel = "Play"
+            ) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(uiState.playStoreDirectory, key = { "play_row_${it.packageName}" }) { rec ->
+                        PlayStoreBannerTile(
+                            item = rec,
+                            onClick = {
+                                if (rec.isInstalledOnBox) {
+                                    onLaunchPackage(rec.packageName, rec.title)
+                                } else {
+                                    onOpenPlayStoreApp(rec.packageName)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    val targetApp = selectedAppForOptions
+    if (targetApp != null) {
+        TvAppOptionsDialog(
+            app = targetApp,
+            onLaunch = {
+                selectedAppForOptions = null
+                onLaunchApp(targetApp)
             },
-            onDismiss = { appPendingCategory = null }
+            onChangeCategory = { cat ->
+                onChangeAppCategory(targetApp.packageName, cat)
+                selectedAppForOptions = null
+            },
+            onOpenAppInfo = {
+                selectedAppForOptions = null
+                onOpenAppSystemInfo(targetApp.packageName)
+            },
+            onUnpin = {
+                selectedAppForOptions = null
+                onUnpinApp(targetApp)
+            },
+            onDismiss = { selectedAppForOptions = null }
         )
     }
 }
 
 @Composable
-private fun VirtualHeroCard(
-    virtualOsVersion: VirtualOsVersion,
-    hostAndroidVersion: String,
-    onNavigateToBoxApps: () -> Unit,
-    onNavigateToPlayStore: () -> Unit
+private fun GoogleTvSpotlightBanner(
+    item: SpotlightItem,
+    totalCount: Int,
+    activeIndex: Int,
+    loadIcon: (String) -> Drawable?,
+    onSelectIndex: (Int) -> Unit,
+    onPrimaryAction: () -> Unit,
+    onBrowseStore: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-        tonalElevation = 6.dp
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("tv_spotlight_banner"),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
     ) {
         Box(
             modifier = Modifier
@@ -282,126 +354,138 @@ private fun VirtualHeroCard(
                 .background(
                     Brush.horizontalGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
-                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f)
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f)
                         )
                     )
                 )
-                .padding(20.dp)
+                .padding(horizontal = 22.dp, vertical = 20.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                        border = BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Tv,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(14.dp)
+                        if (item.isInstalled) {
+                            AppIconBadge(
+                                packageName = item.packageName,
+                                contentDescription = item.title,
+                                loadIcon = loadIcon,
+                                size = 56.dp
                             )
+                        } else {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Tv,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (item.isInstalled) {
+                                    TvSuccess.copy(alpha = 0.18f)
+                                } else {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                }
+                            ) {
+                                Text(
+                                    text = item.badgeText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (item.isInstalled) TvSuccess else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                )
+                            }
                             Text(
-                                text = stringResource(R.string.hero_badge_active),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
+                                text = item.title,
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontFamily = SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
 
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)
-                    ) {
-                        Text(
-                            text = "Host Android $hostAndroidVersion",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = JetBrainsMonoFontFamily
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                        )
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        repeat(totalCount) { idx ->
+                            Surface(
+                                modifier = Modifier
+                                    .size(width = if (idx == activeIndex) 18.dp else 7.dp, height = 7.dp)
+                                    .clip(CircleShape)
+                                    .clickable { onSelectIndex(idx) },
+                                shape = CircleShape,
+                                color = if (idx == activeIndex) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                }
+                            ) {}
+                        }
                     }
                 }
 
                 Text(
-                    text = if (virtualOsVersion == VirtualOsVersion.TV_12) {
-                        stringResource(R.string.hero_title_tv12)
-                    } else {
-                        stringResource(R.string.hero_title_tv11)
-                    },
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontFamily = SpaceGroteskFontFamily,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Text(
-                    text = stringResource(R.string.hero_desc),
+                    text = item.subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
-                        onClick = onNavigateToBoxApps,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("hero_import_box_button"),
-                        shape = RoundedCornerShape(14.dp)
+                        onClick = onPrimaryAction,
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White,
+                            contentColor = Color.Black
+                        ),
+                        modifier = Modifier.testTag("spotlight_primary_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.AddToQueue,
+                            imageVector = if (item.isInstalled) Icons.Filled.PlayArrow else Icons.Filled.CloudDownload,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(Modifier.width(6.dp))
                         Text(
-                            text = stringResource(R.string.action_import_from_box),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = if (item.isInstalled) {
+                                stringResource(R.string.tv_spotlight_watch_now)
+                            } else {
+                                stringResource(R.string.tv_spotlight_install_play)
+                            },
+                            fontWeight = FontWeight.Bold
                         )
                     }
 
                     OutlinedButton(
-                        onClick = onNavigateToPlayStore,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("hero_play_store_button"),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
+                        onClick = onBrowseStore,
+                        shape = RoundedCornerShape(50),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Shop,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = stringResource(R.string.action_open_play_store),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Icon(Icons.Filled.Shop, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(text = stringResource(R.string.tv_tab_store))
                     }
                 }
             }
@@ -410,160 +494,332 @@ private fun VirtualHeroCard(
 }
 
 @Composable
-private fun PinnedAppTile(
+private fun TvChannelRow(
+    title: String,
+    showSidebarTag: Boolean,
+    sidebarLabel: String,
+    content: @Composable () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (showSidebarTag) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                ) {
+                    Text(
+                        text = sidebarLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onBackground
+            )
+        }
+        content()
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TvAppBannerTile(
     app: InstalledBoxApp,
     loadIcon: (String) -> Drawable?,
-    onLaunch: () -> Unit,
-    onEditCategory: () -> Unit,
-    onUnpin: () -> Unit,
-    modifier: Modifier = Modifier
+    compact: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
-    TvFocusableSurface(
-        onClick = onLaunch,
-        modifier = modifier.testTag("pinned_app_${app.packageName}")
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            AppIconBadge(
-                packageName = app.packageName,
-                contentDescription = app.label,
-                loadIcon = loadIcon,
-                size = 56.dp
-            )
+    var focused by remember { mutableStateOf(false) }
+    val width = if (compact) 136.dp else 164.dp
+    val height = if (compact) 78.dp else 94.dp
 
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+    Column(
+        modifier = Modifier
+            .width(width)
+            .testTag("pinned_app_${app.packageName}"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Surface(
+            modifier = Modifier
+                .width(width)
+                .height(height)
+                .graphicsLayer {
+                    val s = if (focused) 1.07f else 1f
+                    scaleX = s
+                    scaleY = s
+                }
+                .onFocusChanged { focused = it.isFocused }
+                .minimumInteractiveComponentSize()
+                .clip(RoundedCornerShape(14.dp))
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                ),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            border = BorderStroke(
+                width = if (focused) 2.5.dp else 1.dp,
+                color = if (focused) Color.White else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+            ),
+            tonalElevation = if (focused) 10.dp else 2.dp
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                AppIconBadge(
+                    packageName = app.packageName,
+                    contentDescription = app.label,
+                    loadIcon = loadIcon,
+                    size = if (compact) 46.dp else 54.dp
+                )
+            }
+        }
+
+        Text(
+            text = app.label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (focused) Color.White else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.88f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun TvAddAppTile(
+    compact: Boolean,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val width = if (compact) 136.dp else 164.dp
+    val height = if (compact) 78.dp else 94.dp
+
+    Column(
+        modifier = Modifier
+            .width(width)
+            .testTag("home_add_app_tile"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Surface(
+            modifier = Modifier
+                .width(width)
+                .height(height)
+                .graphicsLayer {
+                    val s = if (focused) 1.07f else 1f
+                    scaleX = s
+                    scaleY = s
+                }
+                .onFocusChanged { focused = it.isFocused }
+                .minimumInteractiveComponentSize()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(onClick = onClick),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.65f),
+            border = BorderStroke(
+                width = if (focused) 2.5.dp else 1.dp,
+                color = if (focused) Color.White else MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+            )
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.tv_tile_add_app),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(34.dp)
+                )
+            }
+        }
+        Text(
+            text = stringResource(R.string.tv_tile_add_app),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun PlayStoreBannerTile(
+    item: PlayStoreRecommendation,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier
+            .width(220.dp)
+            .height(114.dp)
+            .graphicsLayer {
+                val s = if (focused) 1.05f else 1f
+                scaleX = s
+                scaleY = s
+            }
+            .onFocusChanged { focused = it.isFocused }
+            .minimumInteractiveComponentSize()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+        border = BorderStroke(
+            width = if (focused) 2.dp else 1.dp,
+            color = if (focused) Color.White else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = app.label,
-                    style = MaterialTheme.typography.titleMedium,
+                    text = item.title,
+                    style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
+                Icon(
+                    imageVector = if (item.isInstalledOnBox) Icons.Filled.PlayArrow else Icons.Filled.CloudDownload,
+                    contentDescription = null,
+                    tint = if (item.isInstalledOnBox) TvSuccess else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Text(
+                text = item.tagline,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (item.isInstalledOnBox) {
+                    stringResource(R.string.status_installed_on_box)
+                } else {
+                    "Play Store • ${item.developer}"
+                },
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
+                color = if (item.isInstalledOnBox) TvSuccess else MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
 
+@Composable
+private fun TvAppOptionsDialog(
+    app: InstalledBoxApp,
+    onLaunch: () -> Unit,
+    onChangeCategory: (AppCategory) -> Unit,
+    onOpenAppInfo: () -> Unit,
+    onUnpin: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = app.label, style = MaterialTheme.typography.titleLarge)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onLaunch,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.action_launch_app))
+                }
+                OutlinedButton(
+                    onClick = onOpenAppInfo,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.Info, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.action_app_info))
+                }
+                OutlinedButton(
+                    onClick = onUnpin,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.action_unpin_app))
+                }
+
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.dialog_choose_category),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-                    ) {
-                        Text(
-                            text = stringResource(categoryStringRes(app.category)),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-
-                    if (app.isTvOptimized) {
+                    AppCategory.entries.forEach { cat ->
+                        val selected = app.category == cat
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onChangeCategory(cat) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            }
                         ) {
                             Text(
-                                text = stringResource(R.string.badge_tv_optimized),
+                                text = stringResource(categoryStringRes(cat)),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
                             )
                         }
                     }
                 }
             }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = onEditCategory,
-                    modifier = Modifier.testTag("cat_btn_${app.packageName}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Category,
-                        contentDescription = stringResource(R.string.dialog_choose_category),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(
-                    onClick = onLaunch,
-                    modifier = Modifier.testTag("launch_btn_${app.packageName}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = stringResource(R.string.action_launch_app),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                IconButton(
-                    onClick = onUnpin,
-                    modifier = Modifier.testTag("unpin_btn_${app.packageName}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.action_unpin_app),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.tv_settings_back))
             }
         }
-    }
-}
-
-@Composable
-private fun EmptyPinnedWorkspaceCard(
-    onNavigateToBoxApps: () -> Unit,
-    onNavigateToPlayStore: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.FolderOpen,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(44.dp)
-            )
-            Text(
-                text = stringResource(R.string.empty_pinned_title),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = stringResource(R.string.empty_pinned_desc),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = onNavigateToBoxApps,
-                    modifier = Modifier.testTag("empty_import_button")
-                ) {
-                    Text(text = stringResource(R.string.action_import_from_box))
-                }
-                OutlinedButton(
-                    onClick = onNavigateToPlayStore,
-                    modifier = Modifier.testTag("empty_play_button")
-                ) {
-                    Text(text = stringResource(R.string.action_open_play_store))
-                }
-            }
-        }
-    }
+    )
 }

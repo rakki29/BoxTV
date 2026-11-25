@@ -35,6 +35,15 @@ enum class BoxAppsFilter {
     USER_ONLY
 }
 
+enum class TvSettingsMenu {
+    ROOT,
+    APPS_MANAGER,
+    DEVICE_PREFS,
+    ABOUT,
+    DISPLAY_SOUND,
+    STORAGE
+}
+
 data class VirtualTvUiState(
     val isScanningApps: Boolean = true,
     val virtualOsVersion: VirtualOsVersion = VirtualOsVersion.TV_12,
@@ -47,7 +56,9 @@ data class VirtualTvUiState(
     val boxSearchQuery: String = "",
     val boxAppsFilter: BoxAppsFilter = BoxAppsFilter.ALL,
     val playSearchQuery: String = "",
-    val telemetry: DeviceTelemetry? = null
+    val telemetry: DeviceTelemetry? = null,
+    val isSettingsDrawerOpen: Boolean = false,
+    val settingsMenu: TvSettingsMenu = TvSettingsMenu.ROOT
 )
 
 class VirtualTvViewModel(
@@ -63,6 +74,8 @@ class VirtualTvViewModel(
     private val boxSearchQueryFlow = MutableStateFlow("")
     private val boxFilterFlow = MutableStateFlow(BoxAppsFilter.ALL)
     private val playSearchQueryFlow = MutableStateFlow("")
+    private val settingsDrawerOpenFlow = MutableStateFlow(false)
+    private val settingsMenuFlow = MutableStateFlow(TvSettingsMenu.ROOT)
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val messages: SharedFlow<String> = _messages.asSharedFlow()
@@ -77,11 +90,14 @@ class VirtualTvViewModel(
         boxSearchQueryFlow,
         boxFilterFlow,
         playSearchQueryFlow,
-        telemetryFlow
+        telemetryFlow,
+        settingsDrawerOpenFlow,
+        settingsMenuFlow
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         val pinnedEntities = values[0] as List<VirtualAppEntity>
         val config = values[1] as WorkspaceConfigEntity
+        @Suppress("UNCHECKED_CAST")
         val scannedApps = values[2] as List<InstalledBoxApp>
         val isScanning = values[3] as Boolean
         @Suppress("UNCHECKED_CAST")
@@ -91,6 +107,8 @@ class VirtualTvViewModel(
         val boxFilter = values[7] as BoxAppsFilter
         val playSearch = values[8] as String
         val telemetry = values[9] as DeviceTelemetry?
+        val drawerOpen = values[10] as Boolean
+        val settingsMenu = values[11] as TvSettingsMenu
 
         val pinnedByPkg = pinnedEntities.associateBy { it.packageName }
         val scannedByPkg = scannedApps.associateBy { it.packageName }
@@ -119,7 +137,6 @@ class VirtualTvViewModel(
                     lastLaunchedAt = entity.lastLaunchedAt
                 )
             } else {
-                // Keep entry if currently hidden by system filter, or still installed
                 InstalledBoxApp(
                     packageName = entity.packageName,
                     label = entity.customLabel,
@@ -137,7 +154,7 @@ class VirtualTvViewModel(
         val recent = mergedPinned
             .filter { it.lastLaunchedAt > 0L }
             .sortedByDescending { it.lastLaunchedAt }
-            .take(6)
+            .take(8)
 
         VirtualTvUiState(
             isScanningApps = isScanning,
@@ -151,7 +168,9 @@ class VirtualTvViewModel(
             boxSearchQuery = boxSearch,
             boxAppsFilter = boxFilter,
             playSearchQuery = playSearch,
-            telemetry = telemetry
+            telemetry = telemetry,
+            isSettingsDrawerOpen = drawerOpen,
+            settingsMenu = settingsMenu
         )
     }.stateIn(
         scope = viewModelScope,
@@ -161,7 +180,9 @@ class VirtualTvViewModel(
 
     init {
         viewModelScope.launch {
-            repository.ensureDefaultConfig()
+            isScanningFlow.value = true
+            val initialApps = repository.scanBoxApps(includeSystemApps = false)
+            repository.ensureDefaultConfigAndSeed(initialApps)
             refreshBoxEnvironment(showToast = false)
         }
     }
@@ -183,6 +204,51 @@ class VirtualTvViewModel(
                     )
                 )
             }
+        }
+    }
+
+    fun openSettingsDrawer(menu: TvSettingsMenu = TvSettingsMenu.ROOT) {
+        telemetryFlow.value = repository.readTelemetry()
+        settingsMenuFlow.value = menu
+        settingsDrawerOpenFlow.value = true
+    }
+
+    fun closeSettingsDrawer() {
+        settingsDrawerOpenFlow.value = false
+    }
+
+    fun navigateSettingsMenu(menu: TvSettingsMenu) {
+        if (menu == TvSettingsMenu.ABOUT || menu == TvSettingsMenu.STORAGE) {
+            telemetryFlow.value = repository.readTelemetry()
+        }
+        settingsMenuFlow.value = menu
+    }
+
+    fun navigateSettingsBack() {
+        when (settingsMenuFlow.value) {
+            TvSettingsMenu.ROOT -> settingsDrawerOpenFlow.value = false
+            TvSettingsMenu.APPS_MANAGER, TvSettingsMenu.DEVICE_PREFS -> {
+                settingsMenuFlow.value = TvSettingsMenu.ROOT
+            }
+            TvSettingsMenu.ABOUT, TvSettingsMenu.DISPLAY_SOUND, TvSettingsMenu.STORAGE -> {
+                settingsMenuFlow.value = TvSettingsMenu.DEVICE_PREFS
+            }
+        }
+    }
+
+    fun openSystemSetting(action: String) {
+        if (!repository.openSystemSettings(action)) {
+            _messages.tryEmit(
+                getApplication<Application>().getString(R.string.msg_settings_unavailable)
+            )
+        }
+    }
+
+    fun openAppSystemInfo(packageName: String) {
+        if (!repository.openAppDetails(packageName)) {
+            _messages.tryEmit(
+                getApplication<Application>().getString(R.string.msg_settings_unavailable)
+            )
         }
     }
 
@@ -215,15 +281,6 @@ class VirtualTvViewModel(
         }
     }
 
-    fun pinAppWithCategory(app: InstalledBoxApp, category: AppCategory) {
-        viewModelScope.launch {
-            repository.pinAppToVirtualHome(app, category)
-            _messages.tryEmit(
-                getApplication<Application>().getString(R.string.msg_app_pinned, app.label)
-            )
-        }
-    }
-
     fun updateAppCategory(packageName: String, category: AppCategory) {
         viewModelScope.launch {
             repository.updateAppCategory(packageName, category)
@@ -246,7 +303,17 @@ class VirtualTvViewModel(
     fun setVirtualOsVersion(version: VirtualOsVersion) {
         viewModelScope.launch {
             val current = uiState.value.config
-            repository.saveConfig(current.copy(virtualOsVersion = version.code))
+            val updatedName = if (current.workspaceName == "Android TV 12" || current.workspaceName == "Android TV 11") {
+                if (version == VirtualOsVersion.TV_12) "Android TV 12" else "Android TV 11"
+            } else {
+                current.workspaceName
+            }
+            repository.saveConfig(
+                current.copy(
+                    virtualOsVersion = version.code,
+                    workspaceName = updatedName
+                )
+            )
         }
     }
 
@@ -308,11 +375,6 @@ class VirtualTvViewModel(
     }
 
     fun loadAppIcon(packageName: String): Drawable? = repository.loadAppIcon(packageName)
-
-    fun refreshTelemetry() {
-        telemetryFlow.value = repository.readTelemetry()
-        playDirectoryFlow.value = repository.getPlayStoreDirectory()
-    }
 
     private fun handleExternalResult(result: ExternalLaunchResult) {
         val ctx = getApplication<Application>()
