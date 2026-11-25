@@ -1,0 +1,101 @@
+<resources>
+    <string name="app_name">BoxTV Virtual</string>
+
+    <!-- Navigation -->
+    <string name="nav_virtual_home">الواجهة</string>
+    <string name="nav_box_apps">تطبيقات البوكس</string>
+    <string name="nav_play_store">Play Store</string>
+    <string name="nav_system_settings">النظام</string>
+
+    <!-- Status Bar & OS Badges -->
+    <string name="virtual_tv_12_label">Android TV 12</string>
+    <string name="virtual_tv_11_label">Android TV 11</string>
+    <string name="virtual_tv_12_subtitle">واجهة Google TV الحديثة • تشغيل افتراضي متوافق</string>
+    <string name="virtual_tv_11_subtitle">واجهة Leanback الكلاسيكية • أداء خفيف للبوكس</string>
+    <string name="host_android_badge">المضيف: Android %1$s</string>
+    <string name="network_wifi">Wi-Fi متصل</string>
+    <string name="network_ethernet">سلكي Ethernet</string>
+    <string name="network_cellular">بيانات الهاتف</string>
+    <string name="network_offline">غير متصل</string>
+
+    <!-- Virtual Home Screen -->
+    <string name="hero_badge_active">بيئة افتراضية نشطة</string>
+    <string name="hero_title_tv12">بيئة Android TV 12 الافتراضية</string>
+    <string name="hero_title_tv11">بيئة Android TV 11 الافتراضية</string>
+    <string name="hero_desc">تجربة Android TV متكاملة على جهاز البوكس (Android 9+) مع تشغيل مباشر للتطبيقات والتحميل من Play Store.</string>
+    <string name="action_import_from_box">استيراد من البوكس</string>
+    <string name="action_open_play_store">تحميل من Play Store</string>
+    <string name="section_pinned_apps">تطبيقات الواجهة الافتراضية</string>
+    <string name="section_pinned_count">%1$d تطبيق مثبت</string>
+    <string name="section_recent_launched">شُغّلت مؤخراً</string>
+    <string name="empty_pinned_title">الواجهة جاهزة لاستقبال تطبيقاتك</string>
+    <string name="empty_pinned_desc">قم بتثبيت تطبيقات البوكس مباشرة في هذه الواجهة أو حمّل تطبيقات جديدة من متجر Play Store.</string>
+    <string name="action_launch_app">تشغيل</string>
+    <string name="action_unpin_app">إزالة</string>
+    <string name="action_pin_app">تثبيت بالواجهة</string>
+    <string name="badge_pinned">مثبت ✓</string>
+    <string name="badge_tv_optimized">TV</string>
+    <string name="badge_mobile_app">Mobile</string>
+    <string name="badge_system_app">System</string>
+
+    <!-- Categories -->
+    <string name="cat_all">الكل</string>
+    <string name="cat_favorites">المفضلة</string>
+    <string name="cat_streaming">بث ومشاهدة</string>
+    <string name="cat_gaming">ألعاب</string>
+    <string name="cat_utilities">أدوات</string>
+    <string name="dialog_choose_category">اختر تصنيف التطبيق في الواجهة</string>
+
+    <!-- Box Apps Screen -->
+    <string name="box_apps_title">تطبيقات البوكس المثبتة</string>
+    <string name="box_apps_subtitle">استعرض كل تطبيقات جهازك وثبّتها مباشرة في الواجهة الافتراضية</string>
+    <string name="search_box_apps_hint">ابحث عن تطبيق في البوكس...</string>
+    <string name="filter_all">الكل</string>
+    <string name="filter_pinned">مثبتة بالواجهة</string>
+    <string name="filter_tv">تطبيقات TV</string>
+    <string name="filter_user">تطبيقات المستخدم</string>
+    <string name="action_refresh_apps">تحديث القائمة</string>
+    <string name="empty_box_search">لا توجد تطبيقات مطابقة لبحثك</string>
+
+    <!-- Play Store Screen -->
+    <string name="play_store_title">متجر Google Play</string>
+    <string name="play_store_subtitle">حمّل تطبيقات التلفزيون مباشرة من Play Store ثم شغّلها من الواجهة</string>
+    <string name="play_search_hint">ابحث في Play Store (مثل: Shahid, Kodi, IPTV)...</string>
+    <string name="action_search_play">بحث في Play Store</string>
+    <string name="action_launch_store_home">فتح متجر Play Store</string>
+    <string name="section_recommended_tv">تطبيقات Android TV الموصى بها</string>
+    <string name="status_installed_on_box">مثبت على البوكس</string>
+    <string name="action_download_play">تحميل من Play</string>
+
+    <!-- Settings & Diagnostics Screen -->
+    <string name="settings_title">النظام والإعدادات الافتراضية</string>
+    <string name="settings_subtitle">اختر نسخة Android TV الافتراضية وراجع مواصفات جهاز البوكس</string>
+    <string name="section_virtual_os_version">نسخة النظام الافتراضي</string>
+    <string name="os_card_12_title">Android TV 12 (Snow Cone)</string>
+    <string name="os_card_12_desc">ألوان Electric Cyan وتصميم Google TV الحديث مع بطاقات عرض سينمائية.</string>
+    <string name="os_card_11_title">Android TV 11 (Leanback)</string>
+    <string name="os_card_11_desc">ألوان Emerald المريحة وأداء خفيف ومستقر لأجهزة TV Box المتوسطة.</string>
+    <string name="section_workspace_prefs">تخصيص الواجهة</string>
+    <string name="workspace_name_label">اسم المساحة الافتراضية</string>
+    <string name="save_workspace_name">حفظ الاسم</string>
+    <string name="pref_show_system_apps">إظهار تطبيقات النظام في قائمة البوكس</string>
+    <string name="pref_compact_grid">عرض شبكة مكثفة للتطبيقات</string>
+    <string name="pref_wallpaper_dim">تعتيم الخلفية السينمائية (%1$d%%)</string>
+    <string name="section_device_telemetry">مواصفات البوكس الحقيقية</string>
+    <string name="telemetry_host_os">نظام البوكس الفعلي</string>
+    <string name="telemetry_model">طراز الجهاز</string>
+    <string name="telemetry_abi">المعمارية (ABI)</string>
+    <string name="telemetry_ram">الذاكرة العشوائية (RAM)</string>
+    <string name="telemetry_storage">التخزين الداخلي المتاح</string>
+    <string name="telemetry_compat_note">البيئة الافتراضية متوافقة مع Android 7.0 إلى 16 بما فيها Android 9 TV Box</string>
+    <string name="about_architecture_title">حول آلية التشغيل</string>
+    <string name="about_architecture_desc">يوفر التطبيق واجهة وبيئة تشغيل افتراضية بنمط Android TV 11 و 12 فوق نظام البوكس الأصلي بأمان تام دون تعديل النظام، مع ربط مباشر بمتجر Google Play وتطبيقات الجهاز المثبتة.</string>
+
+    <!-- Feedback / Errors -->
+    <string name="msg_app_pinned">تم تثبيت %1$s في الواجهة الافتراضية</string>
+    <string name="msg_app_unpinned">تمت إزالة %1$s من الواجهة</string>
+    <string name="msg_launch_failed">تعذر تشغيل %1$s على هذا الجهاز</string>
+    <string name="msg_play_store_missing">تعذر فتح تطبيق Play Store؛ سيتم فتح رابط المتصفح</string>
+    <string name="msg_browser_missing">لا يوجد متصفح أو متجر متاح على الجهاز</string>
+    <string name="msg_apps_refreshed">تم تحديث قائمة تطبيقات البوكس (%1$d تطبيق)</string>
+</resources>

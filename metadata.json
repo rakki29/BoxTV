@@ -1,0 +1,6 @@
+{
+  "name": "BoxTV Virtual 12",
+  "description": "بيئة Android TV افتراضية (إصدار 12 و 11) تعمل على أجهزة Android 9 TV Box مع استيراد تطبيقات البوكس مباشرة وفتح متجر Play Store.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
